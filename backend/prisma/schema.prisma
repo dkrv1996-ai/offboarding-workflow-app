@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Step {
+  MANAGER
+  FINANCE
+  IT
+  ADMIN
+  FINAL_HR
+}
+
+enum RequestStatus {
+  SUBMITTED
+  IN_PROGRESS
+  REJECTED
+  COMPLETED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model OffboardingRequest {
+  id            String        @id
+  employeeName  String
+  employeeId    String
+  department    String
+  jobTitle      String
+  lastWorkingDay String
+  reasonForExit String
+
+  managerEmail  String
+  financeEmail  String
+  itEmail       String
+  adminEmail    String
+  finalHrEmail  String
+
+  companyAssets String?
+  hrComments    String?
+
+  status        RequestStatus @default(SUBMITTED)
+  currentStep   Step
+
+  createdBy     String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  approvals     Approval[]
+  tokens        ApprovalToken[]
+  auditLogs     AuditLog[]
+}
+
+model Approval {
+  id          String         @id @default(cuid())
+  requestId   String
+  step        Step
+  approverEmail String
+  status      ApprovalStatus @default(PENDING)
+  comments    String?
+  dataJson    String?        // store step-specific fields as JSON string
+  actedAt     DateTime?
+
+  request     OffboardingRequest @relation(fields: [requestId], references: [id])
+
+  @@unique([requestId, step])
+}
+
+model ApprovalToken {
+  token      String   @id
+  requestId  String
+  step       Step
+  expiresAt  DateTime
+  used       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  request    OffboardingRequest @relation(fields: [requestId], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  requestId  String
+  who        String
+  action     String
+  details    String?
+  at         DateTime @default(now())
+
+  request    OffboardingRequest @relation(fields: [requestId], references: [id])
+}

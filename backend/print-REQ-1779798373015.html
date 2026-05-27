@@ -1,0 +1,110 @@
+
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>Employee Offboarding Summary - REQ-1779798373015</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 24px; }
+        h1 { margin: 0 0 8px 0; }
+        .muted { color: #555; }
+        .card { border: 1px solid #ddd; padding: 12px 14px; border-radius: 8px; margin: 12px 0; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
+        .row { margin: 4px 0; }
+        .label { font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th, td { border: 1px solid #ddd; padding: 8px; font-size: 13px; }
+        th { background: #f5f5f5; text-align: left; }
+        .status { font-weight: bold; }
+        .ok { color: #0a7; }
+        .bad { color: #c00; }
+        @media print {
+          button { display: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <button onclick="window.print()">Print</button>
+
+      <h1>Employee Offboarding Summary</h1>
+      <div class="muted">Request ID: <b>REQ-1779798373015</b></div>
+
+      <div class="card">
+        <h3>Employee Details</h3>
+        <div class="grid">
+          <div class="row"><span class="label">Employee Name:</span> Employee</div>
+          <div class="row"><span class="label">Employee ID:</span> E123</div>
+          <div class="row"><span class="label">Department:</span> IT</div>
+          <div class="row"><span class="label">Job Title:</span> Engineer</div>
+          <div class="row"><span class="label">Last Working Day:</span> 2026-03-02</div>
+          <div class="row"><span class="label">Reason:</span> Resignation</div>
+          <div class="row"><span class="label">Company Assets:</span> Laptop</div>
+          <div class="row"><span class="label">HR Comments:</span> Initiated offboarding</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Approvals</h3>
+
+        
+      <div class="card">
+        <h4>Manager</h4>
+        <div class="row"><span class="label">Status:</span> <span class="ok">APPROVED</span></div>
+        <div class="row"><span class="label">Comments:</span> Approved by Manager</div>
+        
+      </div>
+    
+        
+      <div class="card">
+        <h4>Finance</h4>
+        <div class="row"><span class="label">Status:</span> <span class="ok">APPROVED</span></div>
+        <div class="row"><span class="label">Comments:</span> No due</div>
+        
+      <table>
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          
+            <tr><td>recovery</td><td></td></tr>
+          
+            <tr><td>pendingSalary</td><td>No due</td></tr>
+          
+        </tbody>
+      </table>
+    
+      </div>
+    
+        
+      <div class="card">
+        <h4>IT</h4>
+        <div class="row"><span class="label">Status:</span> <span class="ok">APPROVED</span></div>
+        <div class="row"><span class="label">Comments:</span> No dues</div>
+        
+      <table>
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          
+            <tr><td>otherSystems</td><td></td></tr>
+          
+            <tr><td>vpnDisabled</td><td>Yes</td></tr>
+          
+            <tr><td>emailDisabled</td><td>Yes</td></tr>
+          
+            <tr><td>laptopReturned</td><td>Yes</td></tr>
+          
+        </tbody>
+      </table>
+    
+      </div>
+    
+        
+      <div class="card">
+        <h4>Admin</h4>
+        <div class="row"><span class="label">Status:</span> <span class="ok">APPROVED</span></div>
+        <div class="row"><span class="label">Comments:</span> All cleared</div>
+        
+      <table>
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          
+            <tr><td>idCardReturned</td><td>Yes</td></tr>
+          
+            <tr><td>deskCleared</td><

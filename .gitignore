@@ -1,0 +1,26 @@
+# node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env (secrets)
+.env
+backend/.env
+frontend/.env
+
+# build outputs
+frontend/dist/
+backend/dist/
+
+# sqlite DB files
+*.db
+backend/dev.db
+backend/prisma/dev.db
+
+# vite cache
+frontend/node_modules/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
