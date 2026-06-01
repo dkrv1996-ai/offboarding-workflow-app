@@ -1,17 +1,67 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import AppShell from "../components/Layout/AppShell";
 import { createRequest } from "../api/createRequest";
+
+import {
+  Paper,
+  Stack,
+  Grid,
+  TextField,
+  Button,
+  Typography,
+  Alert,
+  Divider,
+  MenuItem,
+} from "@mui/material";
+
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import dayjs, { Dayjs } from "dayjs";
+
+import { countries } from "countries-list";
+
+type FormState = {
+  employeeName: string;
+  employeeId: string;
+  department: string;
+  jobTitle: string;
+
+  country: string;
+  city: string;
+
+  lastWorkingDay: string; // yyyy-mm-dd
+  reasonForExit: string;
+
+  managerEmail: string;
+  financeEmail: string;
+  itEmail: string;
+  adminEmail: string;
+  finalHrEmail: string;
+
+  companyAssets: string;
+  hrComments: string;
+};
 
 export default function NewRequestPage() {
   const nav = useNavigate();
 
-  const [form, setForm] = useState({
+  const countryOptions = useMemo(() => {
+    const names = Object.values(countries).map((c) => c.name);
+    names.sort((a, b) => a.localeCompare(b));
+    return names;
+  }, []);
+
+  const [form, setForm] = useState<FormState>({
     employeeName: "",
     employeeId: "",
     department: "",
     jobTitle: "",
+
+    country: "",
+    city: "",
+
     lastWorkingDay: "",
-    reasonForExit: "Resignation",
+    reasonForExit: "",
 
     managerEmail: "",
     financeEmail: "",
@@ -23,44 +73,45 @@ export default function NewRequestPage() {
     hrComments: "",
   });
 
+  // Calendar state uses Dayjs
+  const [lwd, setLwd] = useState<Dayjs | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
   const [success, setSuccess] = useState<null | {
     requestId: string;
     approvalLink: string;
     currentStep: string;
   }>(null);
 
-  const set = (key: string, value: string) =>
+  const set = (key: keyof FormState, value: string) =>
     setForm((p) => ({ ...p, [key]: value }));
 
-  const validate = () => {
-    const required = [
-      "employeeName",
-      "employeeId",
-      "department",
-      "jobTitle",
-      "lastWorkingDay",
-      "reasonForExit",
-      "managerEmail",
-      "financeEmail",
-      "itEmail",
-      "adminEmail",
-      "finalHrEmail",
-    ];
-
-    const missing = required.filter((k) => !String((form as any)[k]).trim());
-    return missing;
-  };
+  const requiredKeys: Array<keyof FormState> = [
+    "employeeName",
+    "employeeId",
+    "department",
+    "jobTitle",
+    "country",
+    "city",
+    "lastWorkingDay",
+    "reasonForExit",
+    "managerEmail",
+    "financeEmail",
+    "itEmail",
+    "adminEmail",
+    "finalHrEmail",
+  ];
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess(null);
 
-    const missing = validate();
+    const missing = requiredKeys.filter((k) => !String(form[k]).trim());
     if (missing.length) {
-      setError("Please fill required fields: " + missing.join(", "));
+      setError("Please fill all required fields.");
       return;
     }
 
@@ -71,6 +122,10 @@ export default function NewRequestPage() {
         employeeId: form.employeeId.trim(),
         department: form.department.trim(),
         jobTitle: form.jobTitle.trim(),
+
+        country: form.country.trim(),
+        city: form.city.trim(),
+
         lastWorkingDay: form.lastWorkingDay,
         reasonForExit: form.reasonForExit.trim(),
 
@@ -98,145 +153,150 @@ export default function NewRequestPage() {
 
   if (success) {
     return (
-      <div style={{ padding: 20, maxWidth: 720 }}>
-        <h2>Request Created ✅</h2>
-        <p>
-          <b>Request ID:</b> {success.requestId}
-        </p>
-        <p>
-          <b>Current Step:</b> {success.currentStep}
-        </p>
+      <AppShell title="Create Offboarding Request">
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" fontWeight={900}>
+            Request Created ✅
+          </Typography>
+          <Typography sx={{ mt: 1 }}>
+            <b>Request ID:</b> {success.requestId}
+          </Typography>
+          <Typography>
+            <b>Current Step:</b> {success.currentStep}
+          </Typography>
 
-        <div style={{ marginTop: 12, padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Manager Approval Link (for testing)</div>
-          <div style={{ wordBreak: "break-all" }}>{success.approvalLink}</div>
+          <Divider sx={{ my: 2 }} />
 
-          <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-            <button onClick={() => window.open(success.approvalLink, "_blank")}>Open Approval Link</button>
-            <button onClick={() => nav(`/requests/${success.requestId}`)}>View Request Details</button>
-            <button onClick={() => nav("/dashboard")}>Back to Dashboard</button>
-          </div>
-        </div>
+          <Typography fontWeight={800}>Manager Token Link (testing)</Typography>
+          <Typography sx={{ wordBreak: "break-all", mt: 1 }}>{success.approvalLink}</Typography>
 
-        <p style={{ marginTop: 12, color: "#666" }}>
-          Next step: we will build the Approver page UI for token approvals (no login).
-        </p>
-      </div>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ mt: 2 }}>
+            <Button variant="outlined" onClick={() => window.open(success.approvalLink, "_blank")}>
+              Open Approval Link
+            </Button>
+            <Button variant="outlined" onClick={() => nav(`/requests/${success.requestId}`)}>
+              View Details
+            </Button>
+            <Button onClick={() => nav("/dashboard")}>Back to Dashboard</Button>
+          </Stack>
+        </Paper>
+      </AppShell>
     );
   }
 
   return (
-    <div style={{ padding: 20, maxWidth: 900 }}>
-      <h2>Create Offboarding Request (HR)</h2>
+    <AppShell title="Create Offboarding Request">
+      <form onSubmit={onSubmit}>
+        <Stack spacing={2}>
+          {error && <Alert severity="error">{error}</Alert>}
 
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 14 }}>
-        {/* Employee Details */}
-        <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
-          <h3 style={{ marginTop: 0 }}>Employee Details</h3>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight={900}>
+              Employee Details
+            </Typography>
+            <Divider sx={{ my: 2 }} />
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <label>
-              Employee Name *
-              <input style={{ width: "100%", padding: 8 }} value={form.employeeName} onChange={(e) => set("employeeName", e.target.value)} />
-            </label>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Employee Name *" value={form.employeeName} onChange={(e) => set("employeeName", e.target.value)} />
+              </Grid>
 
-            <label>
-              Employee ID *
-              <input style={{ width: "100%", padding: 8 }} value={form.employeeId} onChange={(e) => set("employeeId", e.target.value)} />
-            </label>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Employee ID *" value={form.employeeId} onChange={(e) => set("employeeId", e.target.value)} />
+              </Grid>
 
-            <label>
-              Department *
-              <input style={{ width: "100%", padding: 8 }} value={form.department} onChange={(e) => set("department", e.target.value)} />
-            </label>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Department *" value={form.department} onChange={(e) => set("department", e.target.value)} />
+              </Grid>
 
-            <label>
-              Job Title *
-              <input style={{ width: "100%", padding: 8 }} value={form.jobTitle} onChange={(e) => set("jobTitle", e.target.value)} />
-            </label>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Job Title *" value={form.jobTitle} onChange={(e) => set("jobTitle", e.target.value)} />
+              </Grid>
 
-            <label>
-              Last Working Day *
-              <input
-                style={{ width: "100%", padding: 8 }}
-                type="date"
-                value={form.lastWorkingDay}
-                onChange={(e) => set("lastWorkingDay", e.target.value)}
-              />
-            </label>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  select
+                  label="Country *"
+                  value={form.country}
+                  onChange={(e) => set("country", e.target.value)}
+                >
+                  {countryOptions.map((c) => (
+                    <MenuItem key={c} value={c}>{c}</MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
 
-            <label>
-              Reason for Exit *
-              <input style={{ width: "100%", padding: 8 }} value={form.reasonForExit} onChange={(e) => set("reasonForExit", e.target.value)} />
-            </label>
-          </div>
-        </section>
+              <Grid item xs={12} sm={6}>
+                <TextField label="City *" value={form.city} onChange={(e) => set("city", e.target.value)} />
+              </Grid>
 
-        {/* Approvers */}
-        <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
-          <h3 style={{ marginTop: 0 }}>Approver Emails</h3>
+              <Grid item xs={12} sm={6}>
+                <DatePicker
+                  label="Last Working Day *"
+                  value={lwd}
+                  onChange={(val) => {
+                    setLwd(val);
+                    set("lastWorkingDay", val ? val.format("YYYY-MM-DD") : "");
+                  }}
+                  slotProps={{ textField: { fullWidth: true } }}
+                />
+              </Grid>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <label>
-              Line Manager Email *
-              <input style={{ width: "100%", padding: 8 }} value={form.managerEmail} onChange={(e) => set("managerEmail", e.target.value)} />
-            </label>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Reason for Exit *" value={form.reasonForExit} onChange={(e) => set("reasonForExit", e.target.value)} />
+              </Grid>
+            </Grid>
+          </Paper>
 
-            <label>
-              Finance Approver Email *
-              <input style={{ width: "100%", padding: 8 }} value={form.financeEmail} onChange={(e) => set("financeEmail", e.target.value)} />
-            </label>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight={900}>
+              Approver Emails
+            </Typography>
+            <Divider sx={{ my: 2 }} />
 
-            <label>
-              IT Approver Email *
-              <input style={{ width: "100%", padding: 8 }} value={form.itEmail} onChange={(e) => set("itEmail", e.target.value)} />
-            </label>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Line Manager Email *" value={form.managerEmail} onChange={(e) => set("managerEmail", e.target.value)} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Finance Approver Email *" value={form.financeEmail} onChange={(e) => set("financeEmail", e.target.value)} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="IT Approver Email *" value={form.itEmail} onChange={(e) => set("itEmail", e.target.value)} />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Admin Approver Email *" value={form.adminEmail} onChange={(e) => set("adminEmail", e.target.value)} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField label="Final HR Email (record) *" value={form.finalHrEmail} onChange={(e) => set("finalHrEmail", e.target.value)} />
+              </Grid>
+            </Grid>
+          </Paper>
 
-            <label>
-              Admin Approver Email *
-              <input style={{ width: "100%", padding: 8 }} value={form.adminEmail} onChange={(e) => set("adminEmail", e.target.value)} />
-            </label>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight={900}>
+              Optional
+            </Typography>
+            <Divider sx={{ my: 2 }} />
 
-            <label style={{ gridColumn: "1 / span 2" }}>
-              Final HR Approver Email *
-              <input style={{ width: "100%", padding: 8 }} value={form.finalHrEmail} onChange={(e) => set("finalHrEmail", e.target.value)} />
-            </label>
-          </div>
-        </section>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <TextField label="Company Assets" value={form.companyAssets} onChange={(e) => set("companyAssets", e.target.value)} />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField label="HR Comments" multiline minRows={3} value={form.hrComments} onChange={(e) => set("hrComments", e.target.value)} />
+              </Grid>
+            </Grid>
+          </Paper>
 
-        {/* Optional */}
-        <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
-          <h3 style={{ marginTop: 0 }}>Optional</h3>
-
-          <div style={{ display: "grid", gap: 12 }}>
-            <label>
-              Company Assets (optional)
-              <input style={{ width: "100%", padding: 8 }} value={form.companyAssets} onChange={(e) => set("companyAssets", e.target.value)} />
-            </label>
-
-            <label>
-              HR Comments
-              <textarea style={{ width: "100%", padding: 8, minHeight: 80 }} value={form.hrComments} onChange={(e) => set("hrComments", e.target.value)} />
-            </label>
-          </div>
-        </section>
-
-        {error && <div style={{ color: "crimson" }}>{error}</div>}
-
-        <div style={{ display: "flex", gap: 10 }}>
-          <button type="submit" disabled={loading} style={{ padding: "10px 14px" }}>
-            {loading ? "Submitting..." : "Submit Request"}
-          </button>
-
-          <button type="button" onClick={() => nav("/dashboard")} style={{ padding: "10px 14px" }}>
-            Cancel
-          </button>
-        </div>
-
-        <div style={{ color: "#666" }}>
-          This form matches your offboarding request fields (employee details, approver emails, assets, HR comments). [1](https://bing.com/search?q=Prisma+supported+Node.js+versions+2026+Prisma+Node+24+support)
-        </div>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+            <Button type="submit" disabled={loading}>
+              {loading ? "Submitting..." : "Submit Request"}
+            </Button>
+            <Button variant="outlined" onClick={() => nav("/dashboard")}>Cancel</Button>
+          </Stack>
+        </Stack>
       </form>
-    </div>
+    </AppShell>
   );
 }

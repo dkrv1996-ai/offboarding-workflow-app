@@ -6,6 +6,8 @@ import ApprovePage from "./pages/ApprovePage";
 import RequestDetailsPage from "./pages/RequestDetailsPage";
 import PrintPage from "./pages/PrintPage";
 import ProtectedRoute from "./routes/ProtectedRoute";
+import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
+import TermsOfServicePage from "./pages/TermsOfServicePage";
 
 export default function App() {
   return (
@@ -53,6 +55,8 @@ export default function App() {
       {/* Default */}
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<div style={{ padding: 20 }}>404 Not Found</div>} />
+	  <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+	  <Route path="/terms-of-service" element={<TermsOfServicePage />} />
     </Routes>
   );
 }

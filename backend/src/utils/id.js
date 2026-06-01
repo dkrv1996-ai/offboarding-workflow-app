@@ -1,4 +1,4 @@
-function generateRequestId() {
+﻿function generateRequestId() {
   return `REQ-${Date.now()}`;
 }
 

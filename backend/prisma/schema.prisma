@@ -12,13 +12,33 @@ enum Step {
   IT
   ADMIN
   FINAL_HR
+  HR_FINAL
+}
+
+enum Role {
+  ADMIN
+  HR
+  GUEST
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  name         String
+  role         Role     @default(HR)
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 enum RequestStatus {
   SUBMITTED
   IN_PROGRESS
+  HR_PENDING
   REJECTED
   COMPLETED
+
 }
 
 enum ApprovalStatus {
@@ -33,9 +53,10 @@ model OffboardingRequest {
   employeeId    String
   department    String
   jobTitle      String
+  country		String?
+  city			String?
   lastWorkingDay String
   reasonForExit String
-
   managerEmail  String
   financeEmail  String
   itEmail       String

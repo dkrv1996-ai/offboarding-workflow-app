@@ -1,17 +1,9 @@
-const prisma = require("../db");
+﻿const prisma = require("../db");
 
-function escapeHtml(str) {
-  return String(str || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function safeParseJson(s) {
+// ---------- helpers ----------
+function safeJsonParse(s) {
   try {
-    return JSON.parse(s);
+    return s ? JSON.parse(s) : {};
   } catch {
     return {};
   }
@@ -19,55 +11,31 @@ function safeParseJson(s) {
 
 function approvalsToMap(approvalsArray) {
   const map = {};
-  for (const a of approvalsArray) {
+  for (const a of approvalsArray || []) {
     map[a.step] = {
       status: a.status,
       comments: a.comments || "",
-      data: a.dataJson ? safeParseJson(a.dataJson) : {},
-      approverEmail: a.approverEmail,
+      data: safeJsonParse(a.dataJson),
+      approverEmail: a.approverEmail, // stored in Approval table
       actedAt: a.actedAt,
     };
   }
   return map;
 }
 
-function renderKVTable(obj) {
-  if (!obj || typeof obj !== "object") return "";
-  const entries = Object.entries(obj);
-  if (!entries.length) return "";
-
-  return `
-    <table>
-      <thead><tr><th>Field</th><th>Value</th></tr></thead>
-      <tbody>
-        ${entries
-          .map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`)
-          .join("")}
-      </tbody>
-    </table>
-  `;
+function timelineToArray(auditLogs) {
+  return (auditLogs || [])
+    .slice()
+    .sort((x, y) => new Date(x.at) - new Date(y.at))
+    .map((l) => ({
+      at: l.at instanceof Date ? l.at.toISOString() : String(l.at),
+      who: l.who,
+      action: l.action,
+      details: l.details || "",
+    }));
 }
 
-function renderApprovalCard(title, approval) {
-  if (!approval) {
-    return `<div class="card"><h4>${escapeHtml(title)}</h4><div class="row">No data</div></div>`;
-  }
-
-  const st = approval.status || "PENDING";
-  const cls = st === "APPROVED" ? "ok" : st === "REJECTED" ? "bad" : "";
-
-  return `
-    <div class="card">
-      <h4>${escapeHtml(title)}</h4>
-      <div class="row"><span class="label">Status:</span> <span class="${cls}">${escapeHtml(st)}</span></div>
-      <div class="row"><span class="label">Approver Email:</span> ${escapeHtml(approval.approverEmail || "")}</div>
-      <div class="row"><span class="label">Comments:</span> ${escapeHtml(approval.comments || "")}</div>
-      ${renderKVTable(approval.data)}
-    </div>
-  `;
-}
-
-// HTML print
+// ---------- HTML PRINT (fallback) ----------
 exports.printReport = async (req, res) => {
   try {
     const requestId = req.params.id;
@@ -80,91 +48,55 @@ exports.printReport = async (req, res) => {
     if (!reqObj) return res.status(404).send("Request not found");
 
     const approvals = approvalsToMap(reqObj.approvals);
-    const timeline = reqObj.auditLogs
-      .sort((a, b) => new Date(a.at) - new Date(b.at))
-      .map((l) => ({
-        at: l.at instanceof Date ? l.at.toISOString() : String(l.at),
-        who: l.who,
-        action: l.action,
-        details: l.details || "",
-      }));
+    const timeline = timelineToArray(reqObj.auditLogs);
 
     const html = `
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Employee Offboarding Summary - ${escapeHtml(reqObj.id)}</title>
+          <title>Offboarding Summary - ${reqObj.id}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 24px; }
             h1 { margin: 0 0 8px 0; }
             .muted { color: #555; }
-            .card { border: 1px solid #ddd; padding: 12px 14px; border-radius: 8px; margin: 12px 0; }
-            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
-            .row { margin: 4px 0; }
-            .label { font-weight: bold; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            .card { border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin: 12px 0; }
+            table { width: 100%; border-collapse: collapse; }
             th, td { border: 1px solid #ddd; padding: 8px; font-size: 13px; }
             th { background: #f5f5f5; text-align: left; }
-            .ok { color: #0a7; font-weight: bold; }
-            .bad { color: #c00; font-weight: bold; }
-            @media print { button { display: none; } }
+            @media print { button { display:none; } }
           </style>
         </head>
         <body>
           <button onclick="window.print()">Print</button>
-
           <h1>Employee Offboarding Summary</h1>
-          <div class="muted">Request ID: <b>${escapeHtml(reqObj.id)}</b></div>
+          <div class="muted">Request ID: <b>${reqObj.id}</b></div>
 
           <div class="card">
             <h3>Employee Details</h3>
-            <div class="grid">
-              <div class="row"><span class="label">Employee Name:</span> ${escapeHtml(reqObj.employeeName)}</div>
-              <div class="row"><span class="label">Employee ID:</span> ${escapeHtml(reqObj.employeeId)}</div>
-              <div class="row"><span class="label">Department:</span> ${escapeHtml(reqObj.department)}</div>
-              <div class="row"><span class="label">Job Title:</span> ${escapeHtml(reqObj.jobTitle)}</div>
-              <div class="row"><span class="label">Last Working Day:</span> ${escapeHtml(reqObj.lastWorkingDay)}</div>
-              <div class="row"><span class="label">Reason:</span> ${escapeHtml(reqObj.reasonForExit)}</div>
-              <div class="row"><span class="label">Company Assets:</span> ${escapeHtml(reqObj.companyAssets || "")}</div>
-              <div class="row"><span class="label">HR Comments:</span> ${escapeHtml(reqObj.hrComments || "")}</div>
-            </div>
+            <div><b>Name:</b> ${reqObj.employeeName}</div>
+            <div><b>Employee ID:</b> ${reqObj.employeeId}</div>
+            <div><b>Department:</b> ${reqObj.department}</div>
+            <div><b>Job Title:</b> ${reqObj.jobTitle}</div>
+            <div><b>Last Working Day:</b> ${reqObj.lastWorkingDay}</div>
+            <div><b>Reason:</b> ${reqObj.reasonForExit}</div>
+            <div><b>Manager Email:</b> ${reqObj.managerEmail || ""}</div>
+            <div><b>Finance Email:</b> ${reqObj.financeEmail || ""}</div>
+            <div><b>IT Email:</b> ${reqObj.itEmail || ""}</div>
+            <div><b>Admin Email:</b> ${reqObj.adminEmail || ""}</div>
+            <div><b>Final HR Email:</b> ${reqObj.finalHrEmail || ""}</div>
           </div>
 
           <div class="card">
             <h3>Approvals</h3>
-            ${renderApprovalCard("Manager", approvals.MANAGER)}
-            ${renderApprovalCard("Finance", approvals.FINANCE)}
-            ${renderApprovalCard("IT", approvals.IT)}
-            ${renderApprovalCard("Admin", approvals.ADMIN)}
-            ${renderApprovalCard("Final HR", approvals.FINAL_HR)}
-            <div class="row"><span class="label">Final Status:</span>
-              <span class="${reqObj.status === "COMPLETED" ? "ok" : ""}">${escapeHtml(reqObj.status)}</span>
-            </div>
+            <pre>${JSON.stringify(approvals, null, 2)}</pre>
           </div>
 
           <div class="card">
             <h3>Timeline / Log</h3>
             <table>
-              <thead>
-                <tr>
-                  <th>Date/Time</th>
-                  <th>Who</th>
-                  <th>Action</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Date/Time</th><th>Who</th><th>Action</th><th>Details</th></tr></thead>
               <tbody>
-                ${timeline
-                  .map(
-                    (t) => `
-                    <tr>
-                      <td>${escapeHtml(t.at)}</td>
-                      <td>${escapeHtml(t.who)}</td>
-                      <td>${escapeHtml(t.action)}</td>
-                      <td>${escapeHtml(t.details)}</td>
-                    </tr>`
-                  )
-                  .join("")}
+                ${timeline.map(t => `<tr><td>${t.at}</td><td>${t.who}</td><td>${t.action}</td><td>${t.details}</td></tr>`).join("")}
               </tbody>
             </table>
           </div>
@@ -180,7 +112,7 @@ exports.printReport = async (req, res) => {
   }
 };
 
-// Optional: JSON summary endpoint (for frontend later)
+// ---------- JSON SUMMARY (React Print uses this) ----------
 exports.getSummaryJson = async (req, res) => {
   try {
     const requestId = req.params.id;
@@ -192,12 +124,39 @@ exports.getSummaryJson = async (req, res) => {
 
     if (!reqObj) return res.status(404).json({ message: "Request not found" });
 
-    return res.json({
-      request: reqObj,
-      approvals: approvalsToMap(reqObj.approvals),
-      timeline: reqObj.auditLogs
-        .sort((a, b) => new Date(a.at) - new Date(b.at))
-        .map((l) => ({ at: l.at, who: l.who, action: l.action, details: l.details || "" })),
+    const approvals = approvalsToMap(reqObj.approvals);
+    const timeline = timelineToArray(reqObj.auditLogs);
+
+    // âœ… IMPORTANT: includes approver emails entered by HR at creation
+    res.json({
+      request: {
+        id: reqObj.id,
+        employeeName: reqObj.employeeName,
+        employeeId: reqObj.employeeId,
+        department: reqObj.department,
+        jobTitle: reqObj.jobTitle,
+		country: reqObj.country,
+		city: reqObj.city,
+        lastWorkingDay: reqObj.lastWorkingDay,
+        reasonForExit: reqObj.reasonForExit,
+
+        managerEmail: reqObj.managerEmail,
+        financeEmail: reqObj.financeEmail,
+        itEmail: reqObj.itEmail,
+        adminEmail: reqObj.adminEmail,
+        finalHrEmail: reqObj.finalHrEmail,
+
+        companyAssets: reqObj.companyAssets,
+        hrComments: reqObj.hrComments,
+
+        status: reqObj.status,
+        currentStep: reqObj.currentStep,
+        createdBy: reqObj.createdBy,
+        createdAt: reqObj.createdAt,
+        updatedAt: reqObj.updatedAt,
+      },
+      approvals,
+      timeline,
     });
   } catch (err) {
     console.error("getSummaryJson error:", err);

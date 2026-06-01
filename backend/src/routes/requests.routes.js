@@ -1,11 +1,28 @@
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
 
 const auth = require("../middlewares/auth.middleware");
-const { createRequest, getRequestById, listRequests } = require("../controllers/requests.controller");
+const { allowHRAdmin, allowViewers } = require("../middlewares/rbac.middleware");
 
-router.post("/", auth, createRequest);
-router.get("/", auth, listRequests);           // optional dashboard list
-router.get("/:id", auth, getRequestById);      // optional detail
+const {
+  createRequest,
+  listRequests,
+  getRequestById,
+  hrFinalDecision,
+  resendCurrentApprovalLink,
+  deleteRequest,
+} = require("../controllers/requests.controller");
+
+router.use(auth);
+
+// view-only
+router.get("/", allowViewers, listRequests);
+router.get("/:id", allowViewers, getRequestById);
+
+// full access
+router.post("/", allowHRAdmin, createRequest);
+router.post("/:id/hr-final", allowHRAdmin, hrFinalDecision);
+router.post("/:id/resend", allowHRAdmin, resendCurrentApprovalLink);
+router.delete("/:id", allowHRAdmin, deleteRequest);
 
 module.exports = router;

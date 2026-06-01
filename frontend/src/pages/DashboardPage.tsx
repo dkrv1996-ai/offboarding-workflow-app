@@ -1,8 +1,48 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { clearToken } from "../api/http";
+import AppShell from "../components/Layout/AppShell";
 import { listRequests } from "../api/requests";
 import type { RequestRow } from "../api/requests";
+import { api } from "../api/http";
+
+
+import {
+  Box,
+  Paper,
+  Stack,
+  TextField,
+  MenuItem,
+  Button,
+  Typography,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  Chip,
+  CircularProgress,
+  Alert,
+} from "@mui/material";
+
+
+function StatusChip({ status }: { status: string }) {
+  const color =
+    status === "COMPLETED"
+      ? "success"
+      : status === "REJECTED"
+      ? "error"
+      : status === "IN_PROGRESS" || status === "HR_PENDING"
+      ? "warning"
+      : "default";
+
+  return <Chip label={status} color={color as any} size="small" />;
+}
+
+function StepChip({ step }: { step: string }) {
+  return <Chip label={step} variant="outlined" size="small" />;
+}
+
+const RESEND_ALLOWED_STEPS = new Set(["MANAGER", "FINANCE", "IT", "ADMIN"]);
 
 export default function DashboardPage() {
   const nav = useNavigate();
@@ -11,13 +51,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [statusFilter, setStatusFilter] = useState<string>(""); // empty = all
+  const [statusFilter, setStatusFilter] = useState<string>("");
   const [search, setSearch] = useState("");
-
-  const logout = () => {
-    clearToken();
-    nav("/login");
-  };
 
   const load = async () => {
     setLoading(true);
@@ -40,109 +75,173 @@ export default function DashboardPage() {
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
     if (!s) return rows;
-    return rows.filter((r) =>
-      (r.id || "").toLowerCase().includes(s) ||
-      (r.employeeName || "").toLowerCase().includes(s) ||
-      (r.employeeId || "").toLowerCase().includes(s) ||
-      (r.department || "").toLowerCase().includes(s) ||
-      (r.jobTitle || "").toLowerCase().includes(s)
-    );
+    return rows.filter((r) => {
+      const hay = `${r.id} ${r.employeeName} ${r.employeeId} ${r.department} ${r.jobTitle}`.toLowerCase();
+      return hay.includes(s);
+    });
   }, [rows, search]);
 
+  const canResend = (r: any) =>
+    (r.status === "SUBMITTED" || r.status === "IN_PROGRESS") && RESEND_ALLOWED_STEPS.has(r.currentStep);
+
+  const resend = async (requestId: string) => {
+    try {
+      const resp = await api<{ message: string; step: string; to: string; link: string }>(
+        `/api/requests/${requestId}/resend`,
+        "POST",
+        {},
+        true
+      );
+      alert(`Resent to ${resp.to} (${resp.step})`);
+    } catch (e: any) {
+      alert(e?.message || "Resend failed");
+    }
+  };
+
+  const deleteReq = async (requestId: string, status: string) => {
+    // Optional: restrict delete to old statuses only (uncomment if you want)
+    // if (!(status === "COMPLETED" || status === "REJECTED")) {
+    //   alert("Delete is allowed only for COMPLETED or REJECTED requests.");
+    //   return;
+    // }
+
+    const ok = confirm("Are you sure you want to delete this request? This cannot be undone.");
+    if (!ok) return;
+
+    try {
+      await api(`/api/requests/${requestId}`, "DELETE", {}, true);
+      alert("Deleted ✅");
+      load();
+    } catch (e: any) {
+      alert(e?.message || "Delete failed");
+    }
+  };
 
   return (
-    <div style={{ padding: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0 }}>HR Dashboard (All Requests)</h2>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => nav("/requests/new")}>Create New Request</button>
-          <button onClick={load}>Refresh</button>
-          <button onClick={logout}>Logout</button>
-        </div>
-      </div>
+    <AppShell title="HR Dashboard">
+      <Stack spacing={2}>
+        <Paper sx={{ p: 2 }}>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }}>
+            <TextField
+              select
+              label="Status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              sx={{ width: { xs: "100%", sm: 220 } }}
+            >
+              <MenuItem value="">All</MenuItem>
+              <MenuItem value="SUBMITTED">SUBMITTED</MenuItem>
+              <MenuItem value="IN_PROGRESS">IN_PROGRESS</MenuItem>
+              <MenuItem value="HR_PENDING">HR_PENDING</MenuItem>
+              <MenuItem value="REJECTED">REJECTED</MenuItem>
+              <MenuItem value="COMPLETED">COMPLETED</MenuItem>
+            </TextField>
 
-      <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <label>
-          Status:&nbsp;
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">All</option>
-            <option value="SUBMITTED">SUBMITTED</option>
-            <option value="IN_PROGRESS">IN_PROGRESS</option>
-            <option value="REJECTED">REJECTED</option>
-            <option value="COMPLETED">COMPLETED</option>
-          </select>
-        </label>
+            <TextField
+              label="Search"
+              placeholder="Request ID / Employee / Dept / Job"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
 
-        <input
-          style={{ padding: 8, minWidth: 260 }}
-          placeholder="Search by Request ID / Employee / Dept / Job"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+            <Box sx={{ display: "flex", gap: 1, justifyContent: { xs: "flex-start", sm: "flex-end" }, width: { sm: 280 } }}>
+              <Button variant="outlined" onClick={load}>
+                Refresh
+              </Button>
+              <Button onClick={() => nav("/requests/new")}>
+                New Request
+              </Button>
+            </Box>
+          </Stack>
+        </Paper>
 
-      {loading && <div style={{ marginTop: 14 }}>Loading...</div>}
-      {error && <div style={{ marginTop: 14, color: "crimson" }}>{error}</div>}
+        <Paper sx={{ p: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="subtitle1" fontWeight={900}>
+              Requests
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Total: {filtered.length}
+            </Typography>
+          </Stack>
 
-      {!loading && !error && (
-        <div style={{ marginTop: 14 }}>
-          <div style={{ marginBottom: 8, color: "#666" }}>Total: {filtered.length}</div>
+          {loading && (
+            <Stack direction="row" spacing={2} alignItems="center">
+              <CircularProgress size={22} />
+              <Typography color="text.secondary">Loading...</Typography>
+            </Stack>
+          )}
 
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", width: "100%" }}>
-              <thead>
-                <tr>
-                  {["Request ID", "Employee", "Department / Title", "Status", "Current Step", "Actions"].map((h) => (
-                    <th
-                      key={h}
-                      style={{
-                        border: "1px solid #ddd",
-                        padding: 10,
-                        textAlign: "left",
-                        background: "#f5f5f5",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {h}
-                    </th>
+          {error && <Alert severity="error">{error}</Alert>}
+
+          {!loading && !error && (
+            <Box sx={{ overflowX: "auto" }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell><b>Request ID</b></TableCell>
+                    <TableCell><b>Employee</b></TableCell>
+                    <TableCell><b>Department / Title</b></TableCell>
+                    <TableCell><b>Status</b></TableCell>
+                    <TableCell><b>Step</b></TableCell>
+                    <TableCell align="right"><b>Actions</b></TableCell>
+                  </TableRow>
+                </TableHead>
+
+                <TableBody>
+                  {filtered.map((r) => (
+                    <TableRow key={r.id} hover>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{r.id}</TableCell>
+
+                      <TableCell>
+                        <Typography fontWeight={800}>{r.employeeName}</Typography>
+                        <Typography variant="body2" color="text.secondary">{r.employeeId}</Typography>
+                      </TableCell>
+
+                      <TableCell>
+                        <Typography fontWeight={800}>{r.department}</Typography>
+                        <Typography variant="body2" color="text.secondary">{r.jobTitle}</Typography>
+                      </TableCell>
+
+                      <TableCell><StatusChip status={r.status} /></TableCell>
+                      <TableCell><StepChip step={r.currentStep} /></TableCell>
+
+                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                        <Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap">
+                          <Button variant="text" onClick={() => nav(`/requests/${r.id}`)}>View</Button>
+                          <Button variant="outlined" onClick={() => nav(`/requests/${r.id}/print`)}>Print</Button>
+
+                          {canResend(r) && (
+                            <Button color="warning" variant="contained" onClick={() => resend(r.id)}>
+                              Resend Link
+                            </Button>
+                          )}
+
+                          <Button
+                            color="error"
+                            variant="outlined"
+                            onClick={() => deleteReq(r.id, r.status)}
+                          >
+                            Delete
+                          </Button>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r) => (
-                  <tr key={r.id}>
-                    <td style={{ border: "1px solid #ddd", padding: 10, whiteSpace: "nowrap" }}>{r.id}</td>
-                    <td style={{ border: "1px solid #ddd", padding: 10 }}>
-                      <div><b>{r.employeeName}</b></div>
-                      <div style={{ color: "#666" }}>{r.employeeId}</div>
-                    </td>
-                    <td style={{ border: "1px solid #ddd", padding: 10 }}>
-                      <div><b>{r.department}</b></div>
-                      <div style={{ color: "#666" }}>{r.jobTitle}</div>
-                    </td>
-                    <td style={{ border: "1px solid #ddd", padding: 10, whiteSpace: "nowrap" }}>{r.status}</td>
-                    <td style={{ border: "1px solid #ddd", padding: 10, whiteSpace: "nowrap" }}>{r.currentStep}</td>
-                    <td style={{ border: "1px solid #ddd", padding: 10, whiteSpace: "nowrap" }}>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={() => nav(`/requests/${r.id}`)}>View</button>
-                        <button onClick={() => nav(`/requests/${r.id}/print`)}>Print</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
 
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={6} style={{ padding: 12, color: "#666" }}>
-                      No requests found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
+                  {filtered.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6}>
+                        <Typography color="text.secondary">No requests found.</Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
+        </Paper>
+      </Stack>
+    </AppShell>
   );
 }

@@ -1,7 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import AppShell from "../components/Layout/AppShell";
 import { getRequestDetails, type RequestDetails } from "../api/requestDetails";
-import { downloadPrintHtml } from "../api/reports";
+import { hrFinalDecision } from "../api/hrFinal";
+
+import {
+  Alert,
+  Paper,
+  Stack,
+  Typography,
+  Divider,
+  Chip,
+  Grid,
+  Button,
+  CircularProgress,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  Box,
+  TextField,
+  Snackbar,
+  Alert as MuiAlert,
+} from "@mui/material";
 
 function safeParseJson(s?: string | null) {
   try {
@@ -9,6 +31,87 @@ function safeParseJson(s?: string | null) {
   } catch {
     return {};
   }
+}
+
+function StatusChip({ status }: { status: RequestDetails["status"] }) {
+  const color =
+    status === "COMPLETED"
+      ? "success"
+      : status === "REJECTED"
+      ? "error"
+      : status === "IN_PROGRESS" || status === "HR_PENDING"
+      ? "warning"
+      : "default";
+  return <Chip label={status} color={color as any} size="small" />;
+}
+
+function StepChip({ step }: { step: RequestDetails["currentStep"] }) {
+  return <Chip label={step} variant="outlined" size="small" />;
+}
+
+function ApprovalCard({ title, approval }: { title: string; approval?: any }) {
+  if (!approval) {
+    return (
+      <Paper sx={{ p: 2 }}>
+        <Typography fontWeight={900}>{title}</Typography>
+        <Typography color="text.secondary">No data</Typography>
+      </Paper>
+    );
+  }
+
+  const data = safeParseJson(approval.dataJson);
+  const stColor =
+    approval.status === "APPROVED" ? "success" : approval.status === "REJECTED" ? "error" : "default";
+
+  return (
+    <Paper sx={{ p: 2 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+        <Typography fontWeight={900}>{title}</Typography>
+        <Chip
+          label={approval.status}
+          color={stColor as any}
+          size="small"
+          variant={approval.status === "PENDING" ? "outlined" : "filled"}
+        />
+      </Stack>
+
+      <Divider sx={{ my: 1.2 }} />
+
+      <Typography variant="body2" color="text.secondary">
+        <b>Approver Email:</b> {approval.approverEmail}
+      </Typography>
+
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+        <b>Comments:</b> {approval.comments || ""}
+      </Typography>
+
+      {approval.actedAt && (
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          <b>Acted At:</b> {approval.actedAt}
+        </Typography>
+      )}
+
+      {Object.keys(data).length > 0 && (
+        <>
+          <Divider sx={{ my: 1.2 }} />
+          <Typography variant="subtitle2" fontWeight={800}>
+            Other details
+          </Typography>
+          <Grid container spacing={1} sx={{ mt: 0.5 }}>
+            {Object.entries(data).map(([k, v]) => (
+              <Grid item xs={12} sm={6} key={k}>
+                <Paper variant="outlined" sx={{ p: 1.2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    <b>{k}:</b> {String(v)}
+                  </Typography>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        </>
+      )}
+    </Paper>
+  );
 }
 
 export default function RequestDetailsPage() {
@@ -19,14 +122,39 @@ export default function RequestDetailsPage() {
   const [error, setError] = useState("");
   const [data, setData] = useState<RequestDetails | null>(null);
 
+  // HR Final state
+  const [hrFinalComments, setHrFinalComments] = useState("");
+  const [hrFinalLoading, setHrFinalLoading] = useState(false);
+
+  // Snackbar
+  const [snack, setSnack] = useState<{
+    open: boolean;
+    msg: string;
+    sev: "success" | "error" | "info" | "warning";
+  }>({ open: false, msg: "", sev: "info" });
+
+  const load = async (requestId: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await getRequestDetails(requestId);
+      setData(res);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load request");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!id) return;
+    load(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   const approvalsMap = useMemo(() => {
     const map: Record<string, any> = {};
-    (data?.approvals || []).forEach((a) => {
-      map[a.step] = {
-        ...a,
-        parsed: safeParseJson(a.dataJson),
-      };
-    });
+    (data?.approvals || []).forEach((a) => (map[a.step] = a));
     return map;
   }, [data]);
 
@@ -36,143 +164,303 @@ export default function RequestDetailsPage() {
       .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
   }, [data]);
 
-  useEffect(() => {
-    const run = async () => {
-      if (!id) return;
-      setLoading(true);
-      setError("");
-      try {
-        const res = await getRequestDetails(id);
-        setData(res);
-      } catch (e: any) {
-        setError(e?.message || "Failed to load request");
-      } finally {
-        setLoading(false);
-      }
-    };
-    run();
-  }, [id]);
+  const addTemplate = (text: string) => {
+    setHrFinalComments((prev) => {
+      const p = prev.trim();
+      if (!p) return text;
+      if (p.endsWith(".")) return `${p} ${text}`;
+      return `${p}. ${text}`;
+    });
+  };
 
-  const onPrint = async () => {
-    if (!id) return;
+  const doHrFinal = async (action: "APPROVE" | "REJECT") => {
+    if (!data) return;
+
+    const comment = hrFinalComments.trim();
+    if (!comment) {
+      setSnack({ open: true, msg: "HR Final Comments is mandatory for both Approve & Reject.", sev: "error" });
+      return;
+    }
+
+    setHrFinalLoading(true);
     try {
-      await downloadPrintHtml(id);
+      await hrFinalDecision(data.id, action, comment);
+
+      // Reload details
+      await load(data.id);
+
+      setHrFinalComments("");
+      setSnack({
+        open: true,
+        msg: action === "APPROVE" ? "Approved & Closed ✅" : "Rejected ❌",
+        sev: action === "APPROVE" ? "success" : "error",
+      });
     } catch (e: any) {
-      alert(e?.message || "Print failed");
+      setSnack({ open: true, msg: e?.message || "HR final action failed", sev: "error" });
+    } finally {
+      setHrFinalLoading(false);
     }
   };
 
-  if (loading) return <div style={{ padding: 20 }}>Loading...</div>;
-  if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
-  if (!data) return <div style={{ padding: 20 }}>No data</div>;
-
   return (
-    <div style={{ padding: 20, maxWidth: 1100 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <h2 style={{ margin: 0 }}>Request Details</h2>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => nav("/dashboard")}>Back</button>
-          <button onClick={onPrint}>Print</button>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 8, color: "#666" }}>
-        <b>Request ID:</b> {data.id} &nbsp; | &nbsp;
-        <b>Status:</b> {data.status} &nbsp; | &nbsp;
-        <b>Current Step:</b> {data.currentStep}
-      </div>
-
-      {/* Employee Details (matches your summary section) */}
-      <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, marginTop: 14 }}>
-        <h3 style={{ marginTop: 0 }}>Employee Details</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div><b>Name:</b> {data.employeeName}</div>
-          <div><b>Employee ID:</b> {data.employeeId}</div>
-          <div><b>Department:</b> {data.department}</div>
-          <div><b>Job Title:</b> {data.jobTitle}</div>
-          <div><b>Last Working Day:</b> {data.lastWorkingDay}</div>
-          <div><b>Reason:</b> {data.reasonForExit}</div>
-          <div><b>Company Assets:</b> {data.companyAssets || ""}</div>
-          <div><b>HR Comments:</b> {data.hrComments || ""}</div>
-        </div>
-      </section>
-
-      {/* Approvals (Manager/Finance/IT/Admin/Final HR) */}
-      <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, marginTop: 14 }}>
-        <h3 style={{ marginTop: 0 }}>Approvals</h3>
-
-        <ApprovalCard title="Manager" a={approvalsMap.MANAGER} />
-        <ApprovalCard title="Finance" a={approvalsMap.FINANCE} />
-        <ApprovalCard title="IT" a={approvalsMap.IT} />
-        <ApprovalCard title="Admin" a={approvalsMap.ADMIN} />
-        <ApprovalCard title="Final HR" a={approvalsMap.FINAL_HR} />
-
-        <div style={{ marginTop: 10, color: "#666" }}>
-          (Finance/IT/Admin/Final HR include step-specific fields like in your offboarding summary.) 
-        </div>
-      </section>
-
-      {/* Timeline / Log */}
-      <section style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, marginTop: 14 }}>
-        <h3 style={{ marginTop: 0 }}>Timeline / Log</h3>
-        {timeline.length ? (
-          <ul style={{ margin: 0 }}>
-            {timeline.map((t, i) => (
-              <li key={i}>
-                <b>{t.at}</b> | {t.who}: {t.action} {t.details ? `- ${t.details}` : ""}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div style={{ color: "#666" }}>No timeline entries</div>
-        )}
-      </section>
-
-      <div style={{ marginTop: 12, color: "#666" }}>
-        This page consolidates all inputs/remarks + timeline similar to your PDF summary requirement. [1](https://bing.com/search?q=Prisma+supported+Node.js+versions+2026+Prisma+Node+24+support)
-      </div>
-    </div>
-  );
-}
-
-function ApprovalCard({ title, a }: { title: string; a: any }) {
-  if (!a) {
-    return (
-      <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 10, marginTop: 10 }}>
-        <b>{title}</b>
-        <div style={{ color: "#666" }}>No data</div>
-      </div>
-    );
-  }
-
-  const dataObj = a.parsed || {};
-
-  return (
-    <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 10, marginTop: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-        <b>{title}</b>
-        <span style={{ color: a.status === "APPROVED" ? "#0a7" : a.status === "REJECTED" ? "#c00" : "#666" }}>
-          {a.status}
-        </span>
-      </div>
-
-      <div style={{ marginTop: 6, color: "#666" }}>
-        <div><b>Email:</b> {a.approverEmail}</div>
-        <div><b>Comments:</b> {a.comments || ""}</div>
-      </div>
-
-      {Object.keys(dataObj).length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <b>Step Data</b>
-          <ul style={{ margin: "6px 0 0 18px" }}>
-            {Object.entries(dataObj).map(([k, v]) => (
-              <li key={k}>
-                {k}: {String(v)}
-              </li>
-            ))}
-          </ul>
-        </div>
+    <AppShell title="Request Details">
+      {loading && (
+        <Stack direction="row" spacing={2} alignItems="center">
+          <CircularProgress size={22} />
+          <Typography color="text.secondary">Loading...</Typography>
+        </Stack>
       )}
-    </div>
+
+      {error && <Alert severity="error">{error}</Alert>}
+
+      {!loading && !error && data && (
+        <Stack spacing={2}>
+          {/* Header */}
+          <Paper sx={{ p: 2 }}>
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={2}>
+              <Box>
+                <Typography variant="h6" fontWeight={900}>
+                  {data.id}
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap">
+                  <StatusChip status={data.status} />
+                  <StepChip step={data.currentStep} />
+                </Stack>
+              </Box>
+
+              <Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap">
+                <Button variant="outlined" onClick={() => nav("/dashboard")}>
+                  Back
+                </Button>
+                <Button onClick={() => nav(`/requests/${data.id}/print`)}>Print</Button>
+              </Stack>
+            </Stack>
+          </Paper>
+
+          {/* Employee Details */}
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" fontWeight={900}>
+              Employee Details
+            </Typography>
+            <Divider sx={{ my: 1.5 }} />
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>Name:</b> {data.employeeName}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>Employee ID:</b> {data.employeeId}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>Department:</b> {data.department}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>Job Title:</b> {data.jobTitle}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>Last Working Day:</b> {data.lastWorkingDay}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>Reason:</b> {data.reasonForExit}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>Company Assets:</b> {data.companyAssets || ""}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>HR Comments:</b> {data.hrComments || ""}
+                </Typography>
+              </Grid>
+            </Grid>
+          </Paper>
+
+          {/* Approver Emails (entered by HR at request creation) */}
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" fontWeight={900}>
+              Approver Emails
+            </Typography>
+            <Divider sx={{ my: 1.5 }} />
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>Manager:</b> {data.managerEmail || ""}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>Finance:</b> {data.financeEmail || ""}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>IT:</b> {data.itEmail || ""}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography>
+                  <b>Admin:</b> {data.adminEmail || ""}
+                </Typography>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography>
+                  <b>Final HR (record field):</b> {data.finalHrEmail || ""}
+                </Typography>
+              </Grid>
+            </Grid>
+          </Paper>
+
+          {/* HR Final Decision Panel (mandatory comment for both Approve & Reject) */}
+          {data.status === "HR_PENDING" && data.currentStep === "HR_FINAL" && (
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6" fontWeight={900}>
+                HR Final Decision
+              </Typography>
+              <Divider sx={{ my: 1.5 }} />
+
+              <Stack spacing={1.5}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap">
+                  <Button variant="outlined" onClick={() => addTemplate("Exit interview done")} disabled={hrFinalLoading}>
+                    Add: Exit interview done
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={() => addTemplate("Experience letter will be issued later")}
+                    disabled={hrFinalLoading}
+                  >
+                    Add: Experience letter later
+                  </Button>
+                </Stack>
+
+                <TextField
+                  label="HR Final Comments (Mandatory)"
+                  placeholder="Example: Exit interview done. Experience letter will be issued later."
+                  multiline
+                  minRows={3}
+                  value={hrFinalComments}
+                  onChange={(e) => setHrFinalComments(e.target.value)}
+                  required
+                  helperText="Mandatory for both Approve & Close and Reject."
+                />
+
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                  <Button onClick={() => doHrFinal("APPROVE")} disabled={hrFinalLoading}>
+                    {hrFinalLoading ? "Processing..." : "Approve & Close"}
+                  </Button>
+                  <Button
+                    color="error"
+                    variant="contained"
+                    onClick={() => doHrFinal("REJECT")}
+                    disabled={hrFinalLoading}
+                  >
+                    {hrFinalLoading ? "Processing..." : "Reject"}
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+          )}
+
+          {/* Approvals */}
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" fontWeight={900}>
+              Approvals
+            </Typography>
+            <Divider sx={{ my: 1.5 }} />
+
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <ApprovalCard title="Manager" approval={approvalsMap.MANAGER} />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <ApprovalCard title="Finance" approval={approvalsMap.FINANCE} />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <ApprovalCard title="IT" approval={approvalsMap.IT} />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <ApprovalCard title="Admin" approval={approvalsMap.ADMIN} />
+              </Grid>
+              <Grid item xs={12}>
+                <ApprovalCard title="HR Final" approval={approvalsMap.HR_FINAL} />
+              </Grid>
+            </Grid>
+          </Paper>
+
+          {/* Timeline */}
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6" fontWeight={900}>
+              Timeline / Log
+            </Typography>
+            <Divider sx={{ my: 1.5 }} />
+            <Box sx={{ overflowX: "auto" }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>
+                      <b>Date/Time</b>
+                    </TableCell>
+                    <TableCell>
+                      <b>Who</b>
+                    </TableCell>
+                    <TableCell>
+                      <b>Action</b>
+                    </TableCell>
+                    <TableCell>
+                      <b>Details</b>
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {timeline.map((t, i) => (
+                    <TableRow key={i} hover>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{t.at}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{t.who}</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>{t.action}</TableCell>
+                      <TableCell>{t.details || ""}</TableCell>
+                    </TableRow>
+                  ))}
+                  {timeline.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4}>
+                        <Typography color="text.secondary">No timeline entries</Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </Box>
+          </Paper>
+        </Stack>
+      )}
+
+      {/* Snackbar */}
+      <Snackbar
+        open={snack.open}
+        autoHideDuration={2200}
+        onClose={() => setSnack((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <MuiAlert
+          severity={snack.sev}
+          variant="filled"
+          sx={{ width: "100%" }}
+          onClose={() => setSnack((s) => ({ ...s, open: false }))}
+        >
+          {snack.msg}
+        </MuiAlert>
+      </Snackbar>
+    </AppShell>
   );
 }

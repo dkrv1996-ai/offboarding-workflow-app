@@ -1,4 +1,4 @@
-const express = require("express");
+﻿const express = require("express");
 const router = express.Router();
 const auth = require("../middlewares/auth.middleware");
 const { sendMail } = require("../services/email.service");
@@ -13,7 +13,7 @@ router.post("/", auth, async (req, res) => {
     const info = await sendMail({
       to,
       subject: "SMTP Test - Offboarding App",
-      html: "<b>If you received this, SMTP is working ✅</b>"
+      html: "<b>If you received this, SMTP is working âœ…</b>"
     });
 
     res.json({ ok: true, messageId: info.messageId || null });

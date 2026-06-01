@@ -10,6 +10,7 @@ export type RequestDetails = {
   lastWorkingDay: string;
   reasonForExit: string;
 
+  // ✅ Approver emails captured by HR
   managerEmail: string;
   financeEmail: string;
   itEmail: string;
